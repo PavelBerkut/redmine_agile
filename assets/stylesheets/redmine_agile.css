@@ -533,5 +533,5 @@ table.list.issues-board.sticky {
 }
 
 html {
-  overflow-y: inherit !important;
+  /*overflow-y: inherit !important;*/
 }
