@@ -30,7 +30,7 @@
 </div>
 <p>
   <label><%= l(:label_agile_default_chart) %></label>
-  <%= select_tag 'settings[default_chart]', options_charts_for_select(RedmineAgile.default_chart) %>
+  <%= select_tag 'settings[default_chart]', grouped_options_charts_for_select(RedmineAgile.default_chart) %>
 </p>
 
 <p>

@@ -29,6 +29,8 @@ ru:
   label_agile_charts_lead_time: Цикл задачи
   label_agile_charts_average_lead_time: Средний цикл задачи
   label_agile_chart_plural: Диаграммы
+  label_agile_chart_new: Новая диаграмма
+  label_agile_chart_edit: Редактировать диаграмму
   permission_view_agile_charts: Просмотр диаграмм
   label_agile_ideal_work_remaining: Идеально
   label_agile_actual_work_remaining: Действительно
@@ -43,7 +45,7 @@ ru:
   label_agile_too_many_items: "Диаграмма не может быть создана потому что превышено максимальное кол-во задач (%{max})"
   label_agile_time_reports_items_limit: Максимальное кол-во задач отображаемых на диаграммах
   label_agile_total_work_remaining: Всего
-  label_agile_default_chart: Диаграмма для версии
+  label_agile_default_chart: Диаграмма по умолчанию
 
   #1.1.1
   label_agile_charts_average_velocity: Средняя скорость закрытия задач
@@ -129,3 +131,20 @@ ru:
   field_color: Цвет
 
   field_duration: Продолжительность
+  label_cards_search: Поиск по теме
+
+  label_agile_interval_size: Размер интервала
+  label_agile_day: День
+  label_agile_week: Неделя
+  label_agile_month: Месяц
+  label_agile_quarter: Квартал
+  label_agile_year: Год
+
+  label_agile_charts: Диаграммы
+  label_agile_chart_units: Тип
+
+  label_agile_planning_board_more: Загрузить еще...
+  label_agile_version_query_new: Новый запрос версий
+  label_agile_version_my_boards: Мои доски версий
+  label_agile_version_board_plural: Доски версий
+  label_agile_version_board_edit: Редактировать доску версий

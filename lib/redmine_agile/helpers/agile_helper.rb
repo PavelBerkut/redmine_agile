@@ -3,7 +3,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2017 RedmineUP
+# Copyright (C) 2011-2019 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -72,10 +72,6 @@ module RedmineAgile
       end
     end
 
-    def retrieve_versions_query
-      @query = AgileVersionsQuery.new
-      @query.project = @project if @project
-                end
     def options_card_colors_for_select(selected, options={})
       color_base = [[l(:label_agile_color_no_colors), "none"],
         [l(:label_issue), "issue"],
@@ -90,16 +86,46 @@ module RedmineAgile
         selected)
     end
 
-    def options_charts_for_select(selected, options={})
-      options_for_select([[l(:label_agile_charts_issues_burndown), "issues_burndown"],
-        [l(:label_agile_charts_work_burndown_sp), "work_burndown_sp"],
-        [l(:label_agile_charts_work_burndown_hours), "work_burndown_hours"],
-        nil].compact,
-        selected)
+    def options_charts_for_select(selected)
+      container = []
+      RedmineAgile::Charts::AGILE_CHARTS.each { |k, v| container << [l(v[:name]), k] }
+      options_for_select(container, selected)
+    end
+
+    def grouped_options_charts_for_select(selected)
+      grouped_options = {}
+      container = []
+
+      RedmineAgile::Charts::AGILE_CHARTS.each do |chart, value|
+        if value[:aliases].present?
+          group = l(value[:name])
+          grouped_options[group] = []
+          value[:aliases].each do |alias_name|
+            grouped_options[group] << ["#{group} (#{l(RedmineAgile::Charts.chart_unit_label_by(alias_name))})", alias_name]
+          end
+        else
+          container << [l(value[:name]), chart]
+        end
+      end
+
+      grouped_options_for_select(grouped_options, selected) + options_for_select(container, selected)
+    end
+
+    def options_chart_units_for_select(selected = nil)
+      container = []
+      RedmineAgile::Charts::CHART_UNITS.each { |k, v| container << [l(v), k] }
+      options_for_select(container, selected)
     end
 
     def render_agile_chart(chart_name, issues_scope)
-      render :partial => "agile_charts/chart", :locals => {:chart => chart_name, :issues_scope => issues_scope}
+      render partial: "agile_charts/chart",
+             locals: { chart: chart_name, issues_scope: issues_scope, chart_unit: params[:chart_unit] }
+    end
+
+    def upgrade_to_pro_agile_chart_link(chart_name, query = @query, current_chart = @chart)
+      link_to l("label_agile_charts_#{chart_name}"), '#',
+              onclick: "showModal('upgrade-to-pro', '557px');",
+              class: ('selected' if query.is_a?(AgileChartsQuery) && query.new_record? && current_chart == chart_name)
     end
 
     private

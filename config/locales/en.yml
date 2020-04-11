@@ -28,6 +28,8 @@ en:
   label_agile_charts_lead_time: Lead time
   label_agile_charts_average_lead_time: Average lead time
   label_agile_chart_plural: Agile charts
+  label_agile_chart_new: New agile chart
+  label_agile_chart_edit: Edit agile chart
   permission_view_agile_charts: View agile charts
   label_agile_ideal_work_remaining: Ideal
   label_agile_actual_work_remaining: Actual
@@ -42,7 +44,7 @@ en:
   label_agile_too_many_items: "The chart can't be created because it exceeds the maximum number of items that can be displayed (%{max})"
   label_agile_time_reports_items_limit: Time entries based charts issues limit
   label_agile_total_work_remaining: Total
-  label_agile_default_chart: Version default chart
+  label_agile_default_chart: Default chart
 
   #1.1.1
   label_agile_charts_average_velocity: Average velocity
@@ -129,3 +131,27 @@ en:
   field_color: Color
 
   field_duration: Duration
+
+  field_closed_on_trendline: Closed trendline
+  field_created_on_trendline: Created trendline
+
+  label_agile_sp_values: Story points values
+
+  label_agile_interval_size: Interval size
+  label_agile_day: Day
+  label_agile_week: Week
+  label_agile_month: Month
+  label_agile_quarter: Quarter
+  label_agile_year: Year
+  label_cards_search: Search by subject
+
+  label_agile_charts: Charts
+  label_agile_chart_burndown: Burndown chart
+  label_agile_chart_burnup: Burnup chart
+  label_agile_chart_units: Units
+
+  label_agile_planning_board_more: Load more...
+  label_agile_version_query_new: New Agile versions query
+  label_agile_version_my_boards: My agile version boards
+  label_agile_version_board_plural: Agile version boards
+  label_agile_version_board_edit: Edit agile version board

@@ -1,7 +1,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2017 RedmineUP
+# Copyright (C) 2011-2019 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@
 
 class AgileQuery < Query
   unloadable
+  include Redmine::SafeAttributes
 
   attr_reader :truncated
 
@@ -231,7 +232,7 @@ class AgileQuery < Query
     add_available_filter "due_date", :type => :date
     add_available_filter "estimated_hours", :type => :float
     add_available_filter "done_ratio", :type => :integer
-    add_available_filter "parent_issue_id", :type => :relation
+    add_available_filter "parent_issue_id", :type => :relation, :values => all_projects_values
     add_available_filter "has_sub_issues", :type => :list,
       :values => [ l(:general_text_yes), l(:general_text_no)],
       :label => :label_agile_has_sub_issues
@@ -254,21 +255,30 @@ class AgileQuery < Query
     add_associations_custom_fields_filters :project, :author, :assigned_to, :fixed_version
 
     IssueRelation::TYPES.each do |relation_type, options|
-      add_available_filter relation_type, :type => :relation, :label => options[:name]
+      add_available_filter relation_type, :type => :relation, :label => options[:name], :values => all_projects_values
     end
 
     Tracker.disabled_core_fields(trackers).each {|field|
       delete_available_filter field
     }
+
+    add_available_filter "issue_id", :type => :integer, :label => :label_issue
+
+    if User.current.allowed_to?(:set_issues_private, nil, :global => true) ||
+      User.current.allowed_to?(:set_own_issues_private, nil, :global => true)
+      add_available_filter 'is_private', type: :list,
+                           values: [[l(:general_text_yes), '1'], [l(:general_text_no), '0']]
+    end
+
+    if User.current.logged?
+      add_available_filter 'watcher_id', type: :list, values: [["<< #{l(:label_me)} >>", 'me']]
+    end
   end
 
   def available_columns
     return @available_columns if @available_columns
     @available_columns = self.class.available_columns.dup
-    @available_columns += (project ?
-                            project.all_issue_custom_fields :
-                            IssueCustomField
-                           ).visible.collect {|cf| QueryCustomFieldColumn.new(cf) }
+    @available_columns += (project ? project.all_issue_custom_fields : IssueCustomField).visible.collect { |cf| QueryCustomFieldColumn.new(cf) }
 
     if User.current.allowed_to?(:view_time_entries, project, :global => true)
       index = nil
@@ -280,6 +290,11 @@ class AgileQuery < Query
         :default_order => 'desc',
         :caption => :label_spent_time
       )
+    end
+
+    if User.current.allowed_to?(:set_issues_private, nil, :global => true) ||
+      User.current.allowed_to?(:set_own_issues_private, nil, :global => true)
+      @available_columns << QueryColumn.new(:is_private, :sortable => "#{Issue.table_name}.is_private")
     end
 
     disabled_fields = Tracker.disabled_core_fields(trackers).map {|field| field.sub(/_id$/, '')}
@@ -295,9 +310,9 @@ class AgileQuery < Query
   def editable_by?(user)
     return false unless user
     # Admin can edit them all and regular users can edit their private queries
-    return true if user.admin? || (is_private? && self.user_id == user.id)
+    return true if user.admin? || (is_private? && user_id == user.id)
     # Members can not edit public queries that are for all project (only admin is allowed to)
-    is_public? && !@is_for_all && user.allowed_to?(:manage_public_agile_queries, project)
+    is_public? && !@is_for_all && user.allowed_to?(:manage_public_agile_queries, project, global: true)
   end
 
   def default_columns_names
@@ -312,6 +327,26 @@ class AgileQuery < Query
     available_columns.select {|c| c.groupable && !c.is_a?(QueryCustomFieldColumn)}
   end
 
+  def sql_for_issue_id_field(field, operator, value)
+    if operator == "="
+      # accepts a comma separated list of ids
+      ids = value.first.to_s.scan(/\d+/).map(&:to_i)
+      if ids.present?
+        "#{Issue.table_name}.id IN (#{ids.join(",")})"
+      else
+        "1=0"
+      end
+    else
+      sql_for_field("id", operator, value, Issue.table_name, "id")
+    end
+  end
+
+  def sql_for_watcher_id_field(field, operator, value)
+    db_table = Watcher.table_name
+    "#{Issue.table_name}.id #{ operator == '=' ? 'IN' : 'NOT IN' } (SELECT #{db_table}.watchable_id FROM #{db_table} WHERE #{db_table}.watchable_type='Issue' AND " +
+      sql_for_field(field, '=', value, db_table, 'user_id') + ')'
+  end
+
   def sql_for_version_status_field(field, operator, value)
      sql_for_field(field, operator, value, Version.table_name, "status")
   end
@@ -324,16 +359,19 @@ class AgileQuery < Query
   end
 
   def sql_for_parent_issue_id_field(field, operator, value, options={})
-    value = value.first.split(",") if value.is_a? Array
-    value = value.split(",") if value.is_a? String
+    value = value.first.split(',') if value.is_a? Array
+    value = value.split(',') if value.is_a? String
     sql = case operator
-      when "*", "!*", "=", "!"
-        sql_for_field(field, operator, value, queried_table_name, "parent_id")
-      when "=p", "=!p", "!p"
-        op = (operator == "!p" ? 'NOT IN' : 'IN')
-        comp = (operator == "=!p" ? '<>' : '=')
-        "#{Issue.table_name}.parent_id #{op} (SELECT DISTINCT #{Issue.table_name}.id FROM #{Issue.table_name} WHERE #{Issue.table_name}.project_id #{comp} #{value.first.to_i})"
-      end
+          when '*', '!*', '=', '!'
+            sql_for_field(field, operator, value, queried_table_name, 'parent_id')
+          when '=p', '=!p', '!p'
+            op = (operator == '!p' ? 'NOT IN' : 'IN')
+            comp = (operator == '=!p' ? '<>' : '=')
+            "#{Issue.table_name}.parent_id #{op} (SELECT DISTINCT #{Issue.table_name}.id FROM #{Issue.table_name} WHERE #{Issue.table_name}.project_id #{comp} #{value.first.to_i})"
+          when '*o', '!o'
+            op = (operator == '!o' ? 'NOT IN' : 'IN')
+            "#{Issue.table_name}.parent_id #{op} (SELECT DISTINCT #{Issue.table_name}.id FROM #{Issue.table_name} WHERE #{Issue.table_name}.status_id IN (SELECT DISTINCT #{IssueStatus.table_name}.id FROM #{IssueStatus.table_name} WHERE is_closed=#{self.class.connection.quoted_false}))"
+          end
     "(#{sql})"
   end
 
@@ -453,7 +491,12 @@ class AgileQuery < Query
 
   def board_statuses
     if Redmine::VERSION.to_s > '2.4'
-      statuses = IssueStatus.where(:id => Tracker.eager_load(:issues => [:status, :project, :fixed_version]).where(statement).map(&:issue_statuses).flatten.uniq.map(&:id))
+      statuses =
+        if Redmine::VERSION.to_s >= '3.4' && project
+          project.rolled_up_statuses
+        else
+          IssueStatus.where(:id => Tracker.eager_load(:issues => [:status, :project, :fixed_version]).where(statement).map(&:issue_statuses).flatten.uniq.map(&:id))
+        end
       status_filter_values = (options[:f_status] if options)
       if status_filter_values
         result_statuses = statuses.where(:id => status_filter_values)
@@ -568,7 +611,7 @@ class AgileQuery < Query
     if values_for('fixed_version_id') == ['current_version'] && project
       version = current_version
       # substitute id for current version
-      filters['fixed_version_id'][:values] = [version.id.to_s] if version
+      version ? filters['fixed_version_id'][:values] = [version.id.to_s] : filters.delete('fixed_version_id')
     end
     clauses = super
     if version
@@ -594,9 +637,10 @@ private
   end
 
   def current_version
-    project.shared_versions.open.where("LOWER(#{Version.table_name}.name) NOT LIKE LOWER(?)", 'backlog').
-                                 where('effective_date >= ? OR effective_date IS NULL', Date.today).
-                                 order("#{Version.table_name}.created_on DESC, #{Version.table_name}.effective_date ASC").first
+    return @current_version if @current_version
+    versions = project.shared_versions.open.where("LOWER(#{Version.table_name}.name) NOT LIKE LOWER(?)", 'backlog')
+    versions -= versions.select(&:completed?).reverse
+    @current_version = versions.to_a.uniq.sort.first
   end
 
 end

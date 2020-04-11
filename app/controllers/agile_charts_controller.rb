@@ -1,7 +1,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2017 RedmineUP
+# Copyright (C) 2011-2019 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -22,8 +22,8 @@ class AgileChartsController < ApplicationController
 
   menu_item :agile
 
-  before_filter :find_optional_project, :only => [:show, :render_chart]
-  before_filter :find_optional_version, :only => [:render_chart, :select_version_chart]
+  before_action :find_optional_project, :only => [:show, :render_chart]
+  before_action :find_optional_version, :only => [:render_chart, :select_version_chart]
 
   helper :issues
   helper :journals
@@ -63,42 +63,37 @@ class AgileChartsController < ApplicationController
                  :date_to => [@version.due_date,
                               @issues.maximum(:due_date),
                               @issues.maximum(:updated_on)].compact.max,
-                 :due_date => @version.due_date || @issues.maximum(:due_date) || @issues.maximum(:updated_on)}
+                 :due_date => @version.due_date || @issues.maximum(:due_date) || @issues.maximum(:updated_on),
+                 :chart_unit => params[:chart_unit]}
       @chart = params[:chart]
     else
       retrieve_charts_query
       @query.date_to ||= Date.today
       @issues = Issue.visible.where(@query.statement)
-      options = {:date_from => @query.date_from, :date_to => @query.date_to}
+      options = { date_from: @query.date_from,
+                  date_to: @query.date_to,
+                  interval_size: @query.interval_size,
+                  chart_unit: @query.chart_unit }
     end
     render_data(options)
   end
 
   def select_version_chart
-
   end
 
-private
+  private
 
-  def render_data(options={})
-    case @chart
-    when "work_burndown_hours"
-      data = RedmineAgile::WorkBurndownChart.render(@issues, options.merge(:estimated_unit => 'hours'))
-    when "work_burndown_sp"
-      data = RedmineAgile::WorkBurndownChart.render(@issues, options.merge(:estimated_unit => 'story_points'))
-    else
-      data = RedmineAgile::BurndownChart.render(@issues, options)
-    end
+  def render_data(options = {})
+    agile_chart = RedmineAgile::Charts::AGILE_CHARTS[@chart]
+    data = agile_chart[:class].data(@issues, options) if agile_chart
+
     if data
-      headers["Content-Type"] = "image/svg+xml"
-      send_data(data, :type => "image/svg+xml", :disposition => "inline")
-    else
-      raise ActiveRecord::RecordNotFound
+      data[:chart] = @chart
+      data[:chart_unit] = options[:chart_unit]
+      return render json: data
     end
 
-  # rescue Exception => e
-  #   logger.error "RedmineAgile: Chart rendering Error -  #{e.message}" if logger && logger.error
-  #   render :nothing => true, :status => 500, :content_type => 'text/html'
+    raise ActiveRecord::RecordNotFound
   end
 
   def find_optional_version
@@ -108,29 +103,37 @@ private
   end
 
   def retrieve_charts_query
-
-    if params[:set_filter] || session[:agile_charts_query].nil? || session[:agile_charts_query][:project_id] != (@project ? @project.id : nil)
+    if params[:query_id].present?
+      @query = AgileChartsQuery.find(params[:query_id])
+      raise ::Unauthorized unless @query.visible?
+      @query.project = @project
+    elsif params[:set_filter] || session[:agile_charts_query].nil? || session[:agile_charts_query][:project_id] != (@project ? @project.id : nil)
       # Give it a name, required to be valid
       @query = AgileChartsQuery.new(:name => "_")
       @query.project = @project
       @query.build_from_params(params)
-      session[:agile_charts_query] = {:project_id => @query.project_id,
-                                      :filters => @query.filters,
-                                      :group_by => @query.group_by,
-                                      :column_names => @query.column_names,
-                                      :date_from => @query.date_from,
-                                      :date_to => @query.date_to}
+      session[:agile_charts_query] = {
+        project_id: @query.project_id,
+        filters: @query.filters,
+        group_by: @query.group_by,
+        column_names: @query.column_names,
+        interval_size: @query.interval_size,
+        chart: @query.chart,
+        chart_unit: @query.chart_unit
+      }
     else
       # retrieve from session
-      @query = AgileChartsQuery.new(:name => "_",
-        :filters => session[:agile_charts_query][:filters] || session[:agile_query][:filters],
-        :group_by => session[:agile_charts_query][:group_by],
-        :column_names => session[:agile_charts_query][:column_names],
-        :date_from => session[:agile_charts_query][:date_from],
-        :date_to => session[:agile_charts_query][:date_to]
-        )
+      @query = AgileChartsQuery.new(
+        name: "_",
+        filters: session[:agile_charts_query][:filters] || session[:agile_query][:filters],
+        group_by: session[:agile_charts_query][:group_by],
+        column_names: session[:agile_charts_query][:column_names],
+        interval_size: session[:agile_charts_query][:interval_size],
+        chart: session[:agile_charts_query][:chart],
+        chart_unit: session[:agile_charts_query][:chart_unit]
+      )
       @query.project = @project
     end
-    @chart = params[:chart] || "issues_burndown"
+    @chart = params[:chart] || @query.chart
   end
 end

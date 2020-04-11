@@ -1,7 +1,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2017 RedmineUP
+# Copyright (C) 2011-2019 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -22,12 +22,13 @@ class AgileChartsQuery < AgileQuery
 
   validate :validate_query_dates
 
-  def initialize(attributes=nil, *args)
+  attr_writer :date_from, :date_to
+
+  def initialize(attributes = nil, *args)
     super attributes
     self.filters.delete('status_id')
+    self.filters['chart_period'] = { operator: 'm', values: [''] } unless has_filter?('chart_period')
   end
-
-  self.operators_by_filter_type[:chart_period] = [ "><", "w", "lw", "l2w", "m", "lm", "y"]
 
   def initialize_available_filters
     principals = []
@@ -36,7 +37,7 @@ class AgileChartsQuery < AgileQuery
     categories = []
     issue_custom_fields = []
 
-    # add_available_filter "chart_period", :type => :chart_period, :name => l(:label_agile_chart_period)
+    add_available_filter 'chart_period', type: :date_past, name: l(:label_date)
 
     if project
       principals += project.principals.sort
@@ -133,20 +134,40 @@ class AgileChartsQuery < AgileQuery
     "1=1"
   end
 
-  def date_from
-    @date_from
+  def chart
+    @chart ||= RedmineAgile::Charts.valid_chart_name_by(options[:chart])
   end
 
-  def date_from=(arg)
-    @date_from = Date.parse(arg.to_s) rescue nil
+  def chart=(arg)
+    options[:chart] = arg
+  end
+
+  def chart_unit
+    @chart_unit ||= RedmineAgile::Charts.valid_chart_unit_by(options[:chart], options[:chart_unit])
+  end
+
+  def chart_unit=(value)
+    options[:chart_unit] = value
+  end
+
+  def date_from
+    @date_from ||= chart_period[:from]
   end
 
   def date_to
-    @date_to
+    @date_to ||= chart_period[:to]
   end
 
-  def date_to=(arg)
-    @date_to = Date.parse(arg.to_s) rescue nil
+  def interval_size
+    if RedmineAgile::AgileChart::TIME_INTERVALS.include?(options[:interval_size])
+      options[:interval_size]
+    else
+      RedmineAgile::AgileChart::DAY_INTERVAL
+    end
+  end
+
+  def interval_size=(value)
+    options[:interval_size] = value
   end
 
   def build_from_params(params)
@@ -160,13 +181,13 @@ class AgileChartsQuery < AgileQuery
     end
     self.group_by = params[:group_by] || (params[:query] && params[:query][:group_by])
     self.column_names = params[:c] || (params[:query] && params[:query][:column_names])
-
-    self.date_from = params[:date_from] || (params[:query] && params[:query][:date_from])
-    self.date_to = params[:date_to] || (params[:query] && params[:query][:date_to])
+    self.chart = params[:chart] || (params[:query] && params[:query][:chart]) || RedmineAgile.default_chart
+    self.interval_size = params[:interval_size] || (params[:query] && params[:query][:interval_size]) || RedmineAgile::AgileChart::DAY_INTERVAL
+    self.chart_unit = params[:chart_unit] || (params[:query] && params[:query][:chart_unit]) || RedmineAgile::Charts::UNIT_ISSUES
     self
   end
 
-private
+  private
 
   def issue_scope
     Issue.visible.
@@ -182,11 +203,46 @@ private
   end
 
   def validate_query_dates
-    if (self.date_from && self.date_to && self.date_from >= self.date_to) ||
-       (self.date_from && self.date_to.blank?)
-      m = l(:label_agile_chart_dates) + " " + l(:invalid, :scope => 'activerecord.errors.messages')
-      errors.add(:base, m)
+    if (self.date_from && self.date_to && self.date_from >= self.date_to)
+      errors.add(:base, l(:label_agile_chart_dates) + ' ' + l(:invalid, scope: 'activerecord.errors.messages'))
     end
   end
 
+  def db_timestamp_regex
+    /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:.\d*))/
+  end
+
+  def chart_period
+    @chart_period ||= {
+      from: chart_period_statement.match("chart_period > '#{db_timestamp_regex}") { |m| Time.zone.parse(m[1]) },
+      to: chart_period_statement.match("chart_period <= '#{db_timestamp_regex}") { |m| Time.zone.parse(m[1]) }
+    }
+  end
+
+  def chart_period_statement
+    @chart_period_statement ||= build_chart_period_statement
+  end
+
+  def build_chart_period_statement
+    field = 'chart_period'
+    operator = filters[field][:operator]
+    values = filters[field][:values]
+    date = User.current.today
+
+    case operator
+    when 'w'
+      first_day_of_week = l(:general_first_day_of_week).to_i
+      day_of_week = date.cwday
+      days_ago = (day_of_week >= first_day_of_week ? day_of_week - first_day_of_week : day_of_week + 7 - first_day_of_week)
+      sql_for_field(field, '><t-', [days_ago], Issue.table_name, field)
+    when 'm'
+      days_ago = date - date.beginning_of_month
+      sql_for_field(field, '><t-', [days_ago], Issue.table_name, field)
+    when 'y'
+      days_ago = date - date.beginning_of_year
+      sql_for_field(field, '><t-', [days_ago], Issue.table_name, field)
+    else
+      sql_for_field(field, operator, values, Issue.table_name, field)
+    end
+  end
 end
