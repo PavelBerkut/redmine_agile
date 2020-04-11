@@ -3,20 +3,19 @@
 <h2><%= @query.new_record? ? l(:label_agile_chart_plural) : h(@query.name) %></h2>
 <% html_title(@query.new_record? ? l(:label_agile_chart_plural) : @query.name) %>
 
-
 <%= form_tag({ :controller => 'agile_charts', :action => 'show', :project_id => @project },
             :method => :get, :id => 'query_form') do %>
   <div id="query_form_with_buttons" class="hide-when-print">
     <%= hidden_field_tag 'set_filter', '1' %>
     <div id="query_form_content">
       <fieldset id="filters" class="collapsible">
-        <legend onclick="toggleFieldset(this);"><%= l(:label_filter_plural) %></legend>
+        <legend class="icon icon-expended" onclick="toggleFieldset(this);"><%= l(:label_filter_plural) %></legend>
         <div>
           <%= render :partial => 'queries/filters', :locals => {:query => @query} %>
         </div>
       </fieldset>
       <fieldset class="collapsible">
-        <legend onclick="toggleFieldset(this);"><%= l(:label_options) %></legend>
+        <legend class="icon icon-expended" onclick="toggleFieldset(this);"><%= l(:label_options) %></legend>
         <div>
           <table>
             <tr>

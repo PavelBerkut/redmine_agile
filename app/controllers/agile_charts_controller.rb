@@ -1,7 +1,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2019 RedmineUP
+# Copyright (C) 2011-2020 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -59,17 +59,17 @@ class AgileChartsController < ApplicationController
   def render_chart
     if @version
       @issues = @version.fixed_issues
-      options = {:date_from => @version.start_date,
-                 :date_to => [@version.due_date,
-                              @issues.maximum(:due_date),
-                              @issues.maximum(:updated_on)].compact.max,
-                 :due_date => @version.due_date || @issues.maximum(:due_date) || @issues.maximum(:updated_on),
-                 :chart_unit => params[:chart_unit]}
+      options = { date_from: @version.start_date,
+                  date_to: [@version.due_date,
+                            @issues.maximum(:due_date),
+                            @issues.maximum(:updated_on)].compact.max,
+                  due_date: @version.due_date || @issues.maximum(:due_date) || @issues.maximum(:updated_on),
+                  chart_unit: params[:chart_unit] }
       @chart = params[:chart]
     else
       retrieve_charts_query
-      @query.date_to ||= Date.today
-      @issues = Issue.visible.where(@query.statement)
+      @issues = Issue.visible
+      @issues = @issues.where(@query.statement)
       options = { date_from: @query.date_from,
                   date_to: @query.date_to,
                   interval_size: @query.interval_size,
@@ -109,29 +109,29 @@ class AgileChartsController < ApplicationController
       @query.project = @project
     elsif params[:set_filter] || session[:agile_charts_query].nil? || session[:agile_charts_query][:project_id] != (@project ? @project.id : nil)
       # Give it a name, required to be valid
-      @query = AgileChartsQuery.new(:name => "_")
+      @query = AgileChartsQuery.new(:name => '_')
       @query.project = @project
       @query.build_from_params(params)
-      session[:agile_charts_query] = {
-        project_id: @query.project_id,
-        filters: @query.filters,
-        group_by: @query.group_by,
-        column_names: @query.column_names,
-        interval_size: @query.interval_size,
-        chart: @query.chart,
-        chart_unit: @query.chart_unit
-      }
+      session[:agile_charts_query] = { project_id: @query.project_id,
+                                       filters: @query.filters,
+                                       group_by: @query.group_by,
+                                       column_names: @query.column_names,
+                                       date_from: @query.date_from,
+                                       date_to: @query.date_to,
+                                       interval_size: @query.interval_size,
+                                       chart: @query.chart,
+                                       chart_unit: @query.chart_unit }
     else
       # retrieve from session
-      @query = AgileChartsQuery.new(
-        name: "_",
-        filters: session[:agile_charts_query][:filters] || session[:agile_query][:filters],
-        group_by: session[:agile_charts_query][:group_by],
-        column_names: session[:agile_charts_query][:column_names],
-        interval_size: session[:agile_charts_query][:interval_size],
-        chart: session[:agile_charts_query][:chart],
-        chart_unit: session[:agile_charts_query][:chart_unit]
-      )
+      @query = AgileChartsQuery.new(name: '_',
+                                    filters: session[:agile_charts_query][:filters] || session[:agile_query][:filters],
+                                    group_by: session[:agile_charts_query][:group_by],
+                                    column_names: session[:agile_charts_query][:column_names],
+                                    date_from: session[:agile_charts_query][:date_from],
+                                    date_to: session[:agile_charts_query][:date_to],
+                                    interval_size: session[:agile_charts_query][:interval_size],
+                                    chart: session[:agile_charts_query][:chart],
+                                    chart_unit: session[:agile_charts_query][:chart_unit])
       @query.project = @project
     end
     @chart = params[:chart] || @query.chart

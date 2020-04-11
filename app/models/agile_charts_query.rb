@@ -1,7 +1,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2019 RedmineUP
+# Copyright (C) 2011-2020 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -30,108 +30,24 @@ class AgileChartsQuery < AgileQuery
     self.filters['chart_period'] = { operator: 'm', values: [''] } unless has_filter?('chart_period')
   end
 
+  self.operators_by_filter_type[:chart_period] = ['><', 'w', 'lw', 'l2w', 'm', 'lm', 'y']
+
   def initialize_available_filters
-    principals = []
-    subprojects = []
-    versions = []
-    categories = []
-    issue_custom_fields = []
+    super
 
     add_available_filter 'chart_period', type: :date_past, name: l(:label_date)
+  end
 
-    if project
-      principals += project.principals.sort
-      unless project.leaf?
-        subprojects = project.descendants.visible.all
-        principals += Principal.member_of(subprojects)
-      end
-      versions = project.shared_versions.all
-      categories = project.issue_categories.all
-      issue_custom_fields = project.all_issue_custom_fields
-    else
-      if all_projects.any?
-        principals += Principal.member_of(all_projects)
-      end
-      versions = Version.visible.where(:sharing => 'system').all
-      issue_custom_fields = IssueCustomField.where(:is_for_all => true)
-    end
-    principals.uniq!
-    principals.sort!
-    users = principals.select {|p| p.is_a?(User)}
-
-    if project.nil?
-      project_values = []
-      if User.current.logged? && User.current.memberships.any?
-        project_values << ["<< #{l(:label_my_projects).downcase} >>", "mine"]
-      end
-      project_values += all_projects_values
-      add_available_filter("project_id",
-        :type => :list, :values => project_values
-      ) unless project_values.empty?
-    end
-
-    add_available_filter "tracker_id",
-      :type => :list, :values => trackers.collect{|s| [s.name, s.id.to_s] }
-    add_available_filter "priority_id",
-      :type => :list, :values => IssuePriority.all.collect{|s| [s.name, s.id.to_s] }
-
-    author_values = []
-    author_values << ["<< #{l(:label_me)} >>", "me"] if User.current.logged?
-    author_values += users.collect{|s| [s.name, s.id.to_s] }
-    add_available_filter("author_id",
-      :type => :list, :values => author_values
-    ) unless author_values.empty?
-
-    assigned_to_values = []
-    assigned_to_values << ["<< #{l(:label_me)} >>", "me"] if User.current.logged?
-    assigned_to_values += (Setting.issue_group_assignment? ?
-                              principals : users).collect{|s| [s.name, s.id.to_s] }
-    add_available_filter("assigned_to_id",
-      :type => :list_optional, :values => assigned_to_values
-    ) unless assigned_to_values.empty?
-
-    if versions.any?
-      add_available_filter "fixed_version_id",
-        :type => :list_optional,
-        :values => versions.sort.collect{|s| ["#{s.project.name} - #{s.name}", s.id.to_s] }
-    end
-
-    if categories.any?
-      add_available_filter "category_id",
-        :type => :list_optional,
-        :values => categories.collect{|s| [s.name, s.id.to_s] }
-    end
-
-    add_available_filter "subject", :type => :text
-    add_available_filter "created_on", :type => :date_past
-    add_available_filter "updated_on", :type => :date_past
-    add_available_filter "closed_on", :type => :date_past
-    add_available_filter "start_date", :type => :date
-    add_available_filter "due_date", :type => :date
-    add_available_filter "estimated_hours", :type => :float
-    add_available_filter "done_ratio", :type => :integer
-
-    if subprojects.any?
-      add_available_filter "subproject_id",
-        :type => :list_subprojects,
-        :values => subprojects.collect{|s| [s.name, s.id.to_s] }
-    end
-
-    add_custom_fields_filters(issue_custom_fields)
-
-    add_associations_custom_fields_filters :project, :author, :assigned_to, :fixed_version
-
-    Tracker.disabled_core_fields(trackers).each {|field|
-      delete_available_filter field
-    }
+  def sprint_values
+    AgileSprint.for_project(project).available.map { |s| [s.to_s, s.id.to_s] }
   end
 
   def default_columns_names
     @default_columns_names = [:id, :subject, :estimated_hours, :spent_hours, :done_ratio, :assigned_to]
   end
 
-  def sql_for_chart_period_field(field, operator, value)
-    "1=1"
+  def sql_for_chart_period_field(_field, _operator, _value)
+    '1=1'
   end
 
   def chart
@@ -140,14 +56,6 @@ class AgileChartsQuery < AgileQuery
 
   def chart=(arg)
     options[:chart] = arg
-  end
-
-  def chart_unit
-    @chart_unit ||= RedmineAgile::Charts.valid_chart_unit_by(options[:chart], options[:chart_unit])
-  end
-
-  def chart_unit=(value)
-    options[:chart_unit] = value
   end
 
   def date_from
@@ -172,7 +80,7 @@ class AgileChartsQuery < AgileQuery
 
   def build_from_params(params)
     if params[:fields] || params[:f]
-      self.filters = {}
+      self.filters = {}.merge(chart_period_filter(params))
       add_filters(params[:fields] || params[:f], params[:operators] || params[:op], params[:values] || params[:v])
     else
       available_filters.keys.each do |field|
@@ -181,25 +89,20 @@ class AgileChartsQuery < AgileQuery
     end
     self.group_by = params[:group_by] || (params[:query] && params[:query][:group_by])
     self.column_names = params[:c] || (params[:query] && params[:query][:column_names])
-    self.chart = params[:chart] || (params[:query] && params[:query][:chart]) || RedmineAgile.default_chart
+    self.date_from = params[:date_from] || (params[:query] && params[:query][:date_from])
+    self.date_to = params[:date_to] || (params[:query] && params[:query][:date_to])
+    self.chart = params[:chart] || (params[:query] && params[:query][:chart]) || params[:default_chart] || RedmineAgile.default_chart
     self.interval_size = params[:interval_size] || (params[:query] && params[:query][:interval_size]) || RedmineAgile::AgileChart::DAY_INTERVAL
     self.chart_unit = params[:chart_unit] || (params[:query] && params[:query][:chart_unit]) || RedmineAgile::Charts::UNIT_ISSUES
+
     self
   end
 
   private
 
-  def issue_scope
-    Issue.visible.
-      eager_load(:status,
-                 :project,
-                 :assigned_to,
-                 :tracker,
-                 :priority,
-                 :category,
-                 :fixed_version,
-                 :agile_data).
-      where(statement)
+  def chart_period_filter(params)
+    return {} if (params[:fields] || params[:f]).include?('chart_period')
+    { 'chart_period' => { operator: 'm', values: [''] } }
   end
 
   def validate_query_dates

@@ -1,7 +1,7 @@
 # This file is a part of Redmin Agile (redmine_agile) plugin,
 # Agile board plugin for redmine
 #
-# Copyright (C) 2011-2019 RedmineUP
+# Copyright (C) 2011-2020 RedmineUP
 # http://www.redmineup.com/
 #
 # redmine_agile is free software: you can redistribute it and/or modify
@@ -33,6 +33,7 @@ module RedmineAgile
     attr_reader :line_colors
 
     def initialize(data_scope, options = {})
+      @options = options
       @data_scope = data_scope
       @data_from ||= options[:data_from]
       @data_to ||= options[:data_to]
@@ -46,7 +47,7 @@ module RedmineAgile
     end
 
     def data
-      { :title => '', :y_title => '', :labels => [], :datasets => [] }
+      { title: '', y_title: '', labels: [], datasets: [] }
     end
 
     def self.data(data_scope, options = {})
@@ -56,7 +57,9 @@ module RedmineAgile
     protected
 
     def current_date_period
-      date_period = (@date_to <= Date.today ? @period_count : (@period_count - (@date_to - Date.today).to_i / @scale_division - 1) + 1).round
+      return @current_date_period if @current_date_period
+
+      date_period = (@date_to <= Date.today || @options[:date_to].present? ? @period_count : (@period_count - (@date_to - Date.today).to_i / @scale_division) + 1).round
       @current_date_period ||= date_period > 0 ? date_period : 0
     end
 
@@ -139,17 +142,17 @@ module RedmineAgile
       color = options[:color] || [rand(255), rand(255), rand(255)].join(',')
       dataset_color = "rgba(#{color}, 1)"
       {
-        :type => (options[:type] || 'line'),
-        :data => dataset_data,
-        :label => label,
-        :fill => (options[:fill] || false),
-        :backgroundColor => "rgba(#{color}, 0.2)",
-        :borderColor => dataset_color,
-        :borderDash => (options[:dashed] ? [5, 5] : []),
-        :borderWidth => (options[:dashed] ? 1.5 : 2),
-        :pointRadius => (options[:nopoints] ? 0 : 3),
-        :pointBackgroundColor => dataset_color,
-        :tooltips => { enable: false }
+        type: (options[:type] || 'line'),
+        data: dataset_data,
+        label: label,
+        fill: (options[:fill] || false),
+        backgroundColor: "rgba(#{color}, 0.2)",
+        borderColor: dataset_color,
+        borderDash: (options[:dashed] ? [5, 5] : []),
+        borderWidth: (options[:dashed] ? 1.5 : 2),
+        pointRadius: (options[:nopoints] ? 0 : 3),
+        pointBackgroundColor: dataset_color,
+        tooltips: { enable: false }
       }
     end
 
@@ -218,7 +221,7 @@ module RedmineAgile
     end
 
     def chart_dates_by_period
-      @chart_dates_by_period ||= @period_count.times.inject([]) do |accum, m|
+      @chart_dates_by_period ||= (@period_count - 1).times.inject([]) do |accum, m|
         period_date = ((@date_to.to_date - 1 - m * @scale_division) + 1)
         accum << if @interval_size == WEEK_INTERVAL
                    period_date.at_beginning_of_week.to_date
@@ -258,7 +261,7 @@ module RedmineAgile
     end
 
     def period_count
-      @period_count ||= [((@date_to.to_time - @date_from.to_time) / time_divider).round, 1].max
+      @period_count ||= ((@date_to.to_time - @date_from.to_time) / time_divider).round + 1
     end
 
     def scale_division
