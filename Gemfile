@@ -1,5 +1,4 @@
 source 'http://gemcutter.org'
-source 'http://gems.rubyforge.org'
 
 gem 'will_paginate'
 gem 'websocket-driver', '0.7.2'
