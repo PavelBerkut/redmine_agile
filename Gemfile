@@ -1,5 +1,4 @@
 source 'http://gemcutter.org'
-source 'http://gems.github.com'
 source 'http://gems.rubyforge.org'
 
 gem 'will_paginate'
